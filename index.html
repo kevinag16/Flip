@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Flip</title>
+  <meta name="description" content="Count every urge you resist. No resets.">
+  <meta name="theme-color" content="#E4E6E1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1A1D21" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Flip">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Home: Your Five -->
+    <section id="view-home" class="view" aria-label="Your Five">
+      <header class="topbar">
+        <h1 class="wordmark">Flip</h1>
+        <nav class="topbar-actions">
+          <button class="link-btn" id="open-hall" type="button">Hall of Fame</button>
+          <button class="icon-btn" id="open-settings" type="button" aria-label="Settings and backup">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          </button>
+        </nav>
+      </header>
+      <p class="subhead">Your Five</p>
+      <div class="board" id="board"></div>
+      <p class="storage-warning" id="storage-warning" hidden>
+        This browser isn't letting Flip save. Your counts will be lost when you close it. Open Flip from your Home Screen, or check that Private Browsing is off.
+      </p>
+    </section>
+
+    <!-- Era detail -->
+    <section id="view-era" class="view" hidden aria-label="Era detail">
+      <header class="topbar">
+        <button class="link-btn back" id="era-back" type="button">Back</button>
+      </header>
+      <div id="era-detail"></div>
+    </section>
+
+    <!-- Hall of Fame -->
+    <section id="view-hall" class="view" hidden aria-label="Hall of Fame">
+      <header class="topbar">
+        <button class="link-btn back" id="hall-back" type="button">Back</button>
+      </header>
+      <h2 class="page-title">Hall of Fame</h2>
+      <div id="hall-list"></div>
+    </section>
+  </div>
+
+  <!-- Flip tray: Proof line, trigger chips, undo -->
+  <div class="tray" id="tray" hidden>
+    <p class="kicker" id="tray-kicker" hidden></p>
+    <p class="proof" id="proof-line"></p>
+    <div class="tray-row" id="trigger-row">
+      <span class="tray-q">What was the pull?</span>
+      <div class="chips" id="chips"></div>
+    </div>
+    <button class="link-btn undo" id="undo-btn" type="button">Undo flip</button>
+  </div>
+
+  <!-- Sheets -->
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden>
+    <div class="sheet-inner" id="sheet-body"></div>
+  </div>
+
+  <div class="burst" id="burst" aria-hidden="true"></div>
+  <div class="sr-only" id="sr-live" aria-live="polite"></div>
+
+  <script src="captions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
