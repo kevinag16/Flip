@@ -1,7 +1,7 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.2";
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
@@ -499,8 +499,6 @@ function undoFlip(era, ev) {
 
 /* ---------------- Tray ---------------- */
 
-let trayTimer = null;
-
 function showTray(era, ev, proof) {
   const tray = $("#tray");
   tray.classList.remove("leaving");
@@ -527,32 +525,24 @@ function showTray(era, ev, proof) {
       ev.trigger = on ? label : undefined;
       chips.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === b && on)));
       save();
-      scheduleTrayHide(1100);
     });
     chips.appendChild(b);
   });
 
   $("#undo-btn").onclick = () => undoFlip(era, ev);
-
-  const len = proof && proof.line ? proof.line.length : 0;
-  scheduleTrayHide(len ? Math.max(5200, 2600 + len * 55) : 4500);
-}
-
-function scheduleTrayHide(ms) {
-  clearTimeout(trayTimer);
-  trayTimer = setTimeout(hideTray, ms);
+  document.body.classList.add("tray-open");
 }
 
 function hideTray() {
   const tray = $("#tray");
   if (tray.hidden) return;
-  clearTimeout(trayTimer);
+  document.body.classList.remove("tray-open");
   if (reducedMotion.matches) { tray.hidden = true; return; }
   tray.classList.add("leaving");
   setTimeout(() => { tray.hidden = true; tray.classList.remove("leaving"); }, 260);
 }
 
-$("#tray").addEventListener("pointerdown", () => scheduleTrayHide(5000));
+$("#tray-done").addEventListener("click", hideTray);
 
 /* ---------------- Views ---------------- */
 
@@ -681,18 +671,23 @@ function levelsHTML(era) {
 }
 
 function historyHTML(era) {
-  const evs = era.events.slice(-60).reverse();
+  const total = era.events.length;
+  const evs = era.events.slice(-60).map((ev, i) => ({ ev, idx: total - Math.min(60, total) + i })).reverse();
   if (!evs.length) return `<p class="muted">Your flips and delays will show up here.</p>`;
+  const graduated = Boolean(era.graduatedAt);
   let html = "";
   let lastDay = null;
-  evs.forEach(ev => {
+  evs.forEach(({ ev, idx }) => {
     const day = fmtDay.format(ev.t);
     if (day !== lastDay) {
       html += `<li class="day">${esc(sameDay(ev.t, Date.now()) ? "Today" : day)}</li>`;
       lastDay = day;
     }
     if (ev.type === "flip") {
-      html += `<li class="ev"><time>${esc(fmtTime.format(ev.t))}</time><span><span class="kind">Flip</span>${ev.trigger ? `, ${esc(ev.trigger.toLowerCase())}` : ""}</span></li>`;
+      const reason = graduated
+        ? (ev.trigger ? `, ${esc(ev.trigger.toLowerCase())}` : "")
+        : `<button class="reason-btn${ev.trigger ? "" : " empty"}" type="button" data-idx="${idx}">${ev.trigger ? esc(ev.trigger) : "Add reason"}</button>`;
+      html += `<li class="ev"><time>${esc(fmtTime.format(ev.t))}</time><span class="ev-main"><span class="kind">Flip</span>${reason}</span></li>`;
     } else {
       const bits = [];
       if (ev.note) bits.push(esc(ev.note));
@@ -800,6 +795,11 @@ function renderEra(era) {
   if (flipBtn) flipBtn.addEventListener("click", () => flip(era.id, { sourceEl: flipBtn }));
   const delayBtn = $("#log-delay");
   if (delayBtn) delayBtn.addEventListener("click", () => openDelaySheet(era));
+
+  root.querySelectorAll(".reason-btn").forEach(b => b.addEventListener("click", () => {
+    const ev = era.events[Number(b.dataset.idx)];
+    if (ev && ev.type === "flip") openReasonSheet(era, ev);
+  }));
 
   if (!graduated) {
     renderCustomLines(era);
@@ -1026,6 +1026,36 @@ function showDelayReply(era, reply, plan) {
       if (currentView === "era") renderEra(era);
     });
     announce(`Delayed, not cancelled. ${reply}`);
+  });
+}
+
+function openReasonSheet(era, ev) {
+  openSheet(`
+    <h2>What was the pull?</h2>
+    <p class="lead">Flip at ${esc(fmtTime.format(ev.t))}, ${esc(sameDay(ev.t, Date.now()) ? "today" : fmtDay.format(ev.t))}.</p>
+    <div class="chips" id="reason-chips">
+      ${TRIGGERS.map(t => `<button type="button" class="chip" aria-pressed="${ev.trigger === t}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}
+    </div>
+    <div class="actions" style="margin-top:20px">
+      ${ev.trigger ? `<button class="btn" type="button" id="reason-clear">Remove reason</button>` : ""}
+      <button class="btn" type="button" id="reason-cancel">Cancel</button>
+    </div>`, body => {
+    body.querySelectorAll("#reason-chips .chip").forEach(c => c.addEventListener("click", () => {
+      ev.trigger = c.dataset.t;
+      save();
+      closeSheet();
+      renderEra(era);
+      toast("Reason saved");
+    }));
+    const clear = $("#reason-clear");
+    if (clear) clear.addEventListener("click", () => {
+      delete ev.trigger;
+      save();
+      closeSheet();
+      renderEra(era);
+      toast("Reason removed");
+    });
+    $("#reason-cancel").addEventListener("click", closeSheet);
   });
 }
 

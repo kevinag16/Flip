@@ -356,7 +356,13 @@ button { cursor: pointer; }
 
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-.undo { margin-top: 4px; padding-left: 0; color: var(--muted); font-weight: 500; font-size: 15px; }
+.tray-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding-bottom: 8px; }
+
+.undo { padding-left: 0; color: var(--muted); font-weight: 500; font-size: 15px; }
+
+.tray-done { min-height: 44px; min-width: 96px; }
+
+body.tray-open #app { padding-bottom: 320px; }
 
 .kicker {
   margin: 0 0 4px;
@@ -575,11 +581,25 @@ button { cursor: pointer; }
 
 .history .ev { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 
-.history .ev time { flex: none; width: 74px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.history .ev time { flex: none; width: 76px; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 15px; }
 
 .history .ev.delay { color: var(--ink); }
 
 .history .ev .kind { font-weight: 600; }
+
+.history .ev-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 1; }
+
+.reason-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.reason-btn.empty { color: var(--muted); border-style: dashed; }
 
 .history .ev .note { display: block; color: var(--muted); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
