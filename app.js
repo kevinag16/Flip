@@ -1,7 +1,7 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
@@ -693,7 +693,10 @@ function historyHTML(era) {
       if (ev.note) bits.push(esc(ev.note));
       if (ev.before) bits.push(`Right before: ${esc(ev.before)}`);
       if (ev.plan) bits.push(`Next time, I'll ${esc(ev.plan)}`);
-      html += `<li class="ev delay"><time>${esc(fmtTime.format(ev.t))}</time><span><span class="kind">Delay</span>${bits.map(b => `<span class="note">${b}</span>`).join("")}</span></li>`;
+      const inner = `<span class="kind">Delay</span>${bits.length ? bits.map(b => `<span class="note">${b}</span>`).join("") : `<span class="note">No notes yet</span>`}`;
+      html += graduated
+        ? `<li class="ev delay"><time>${esc(fmtTime.format(ev.t))}</time><span>${inner}</span></li>`
+        : `<li class="ev delay"><time>${esc(fmtTime.format(ev.t))}</time><button class="delay-open" type="button" data-idx="${idx}"><span class="delay-text">${inner}</span><span class="delay-edit">Edit</span></button></li>`;
     }
   });
   const more = era.events.length > 60 ? `<p class="muted">Showing the latest 60. Your backup keeps everything.</p>` : "";
@@ -795,6 +798,11 @@ function renderEra(era) {
   if (flipBtn) flipBtn.addEventListener("click", () => flip(era.id, { sourceEl: flipBtn }));
   const delayBtn = $("#log-delay");
   if (delayBtn) delayBtn.addEventListener("click", () => openDelaySheet(era));
+
+  root.querySelectorAll(".delay-open").forEach(b => b.addEventListener("click", () => {
+    const ev = era.events[Number(b.dataset.idx)];
+    if (ev && ev.type === "delay") openDelayEditSheet(era, ev);
+  }));
 
   root.querySelectorAll(".reason-btn").forEach(b => b.addEventListener("click", () => {
     const ev = era.events[Number(b.dataset.idx)];
@@ -1026,6 +1034,62 @@ function showDelayReply(era, reply, plan) {
       if (currentView === "era") renderEra(era);
     });
     announce(`Delayed, not cancelled. ${reply}`);
+  });
+}
+
+function openDelayEditSheet(era, ev) {
+  openSheet(`
+    <h2>Delay</h2>
+    <p class="lead">Logged ${esc(fmtTime.format(ev.t))}, ${esc(sameDay(ev.t, Date.now()) ? "today" : fmtDay.format(ev.t))}. Your count isn't affected.</p>
+    <div class="field">
+      <label for="de-note">What happened?</label>
+      <textarea id="de-note" placeholder="Write anything. Only you can see this.">${esc(ev.note || "")}</textarea>
+    </div>
+    <div class="field">
+      <label for="de-before">What was happening right before?</label>
+      <input type="text" id="de-before" maxlength="120" value="${esc(ev.before || "")}">
+    </div>
+    <div class="field">
+      <label for="de-plan">Next time that happens, I'll…</label>
+      <input type="text" id="de-plan" maxlength="120" placeholder="take a walk around the block" value="${esc(ev.plan || "")}">
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="de-save">Save changes</button>
+      <button class="btn" type="button" id="de-cancel">Cancel</button>
+      <button class="btn danger" type="button" id="de-delete">Delete this delay</button>
+    </div>
+    ${SUPPORT_HTML}`, () => {
+    $("#de-cancel").addEventListener("click", closeSheet);
+    $("#de-save").addEventListener("click", () => {
+      const note = $("#de-note").value.trim();
+      const before = $("#de-before").value.trim();
+      const plan = $("#de-plan").value.trim().replace(/^i'?ll\s+/i, "").replace(/[.!]+$/, "");
+      if (note) ev.note = note; else delete ev.note;
+      if (before) ev.before = before; else delete ev.before;
+      if (plan) ev.plan = plan; else delete ev.plan;
+      save();
+      closeSheet();
+      renderEra(era);
+      toast("Delay updated");
+    });
+    $("#de-delete").addEventListener("click", () => {
+      confirmSheet({
+        title: "Delete this delay?",
+        body: "It's removed from your history. Your count stays the same.",
+        confirm: "Delete delay",
+        danger: true,
+        onConfirm: () => {
+          const i = era.events.indexOf(ev);
+          if (i >= 0) era.events.splice(i, 1);
+          const lastDelay = [...era.events].reverse().find(e => e.type === "delay");
+          const lastFlip = [...era.events].reverse().find(e => e.type === "flip");
+          if (!lastDelay || (lastFlip && lastFlip.t > lastDelay.t)) era.comebackPending = false;
+          save();
+          renderEra(era);
+          toast("Delay deleted");
+        }
+      });
+    });
   });
 }
 

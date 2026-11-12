@@ -601,6 +601,30 @@ body.tray-open #app { padding-bottom: 320px; }
 
 .reason-btn.empty { color: var(--muted); border-style: dashed; }
 
+.delay-open {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.delay-text { min-width: 0; }
+
+.delay-edit {
+  flex: none;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .history .ev .note { display: block; color: var(--muted); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .levels { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
