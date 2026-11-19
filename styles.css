@@ -724,6 +724,163 @@ body.tray-open #app { padding-bottom: 320px; }
   text-align: center;
 }
 
+/* ---------- Top bar fit (Logbook + Hall of Fame + settings at 360px) ---------- */
+
+.topbar-actions { gap: 0; }
+.topbar-actions .link-btn { padding: 10px 7px; }
+
+@media (max-width: 370px) {
+  .wordmark { font-size: 30px; }
+  .topbar-actions .link-btn { padding: 10px 5px; font-size: 15px; }
+  .icon-btn { width: 38px; }
+}
+
+/* ---------- Shared bits for Delay + Logbook ---------- */
+
+.btn.block { width: 100%; }
+.btn.small { min-height: 40px; padding: 0 18px; font-size: 16px; }
+
+.chip.small { min-height: 34px; padding: 0 12px; font-size: 14px; }
+.chips.suggest { margin-top: 2px; }
+
+.disclose {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.disclose::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.disclose[aria-expanded="true"]::after { transform: rotate(-135deg); }
+
+.write-wrap { display: grid; gap: 6px; }
+
+.section h4, .compare h4, h4.sub { margin: 14px 0 6px; font-size: 15px; font-weight: 600; color: var(--muted); }
+
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.compare h4 { margin-top: 4px; }
+
+/* ---------- Logbook ---------- */
+
+.logbook-line { margin: -8px 0 18px; color: var(--muted); font-size: 17px; }
+
+.prompt-row { margin: 10px 0 4px; border-bottom: 1px solid var(--line); }
+
+.paths { display: grid; gap: 8px; padding-bottom: 14px; }
+
+.path-btn {
+  appearance: none;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+}
+
+.path-btn strong { font-size: 16px; font-weight: 600; }
+
+.lb-empty { margin-top: 18px; }
+
+.lb-day { margin: 20px 0 2px; color: var(--muted); font-size: 14px; font-weight: 600; font-family: var(--font-body); }
+
+.lb-list { list-style: none; margin: 0; padding: 0; }
+
+.lb-row {
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+
+.lb-row time { flex: none; width: 76px; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 15px; }
+
+.lb-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+
+.lb-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+
+.lb-kind { font-weight: 600; }
+
+.lb-mood { color: var(--muted); }
+
+.era-tag { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+.era-tag::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--era); }
+
+.lb-preview { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+#view-logbook .support { margin-top: 28px; }
+
+/* ---------- Writing screen: calm, no board ---------- */
+
+.write-view .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+
+.write-when { margin: 4px 0 14px; color: var(--muted); font-size: 15px; }
+
+.prompt-card {
+  margin-bottom: 12px;
+  padding: 14px 16px 6px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.prompt-step { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.prompt-text { margin: 0 0 4px; font-size: 19px; font-weight: 600; line-height: 1.35; }
+.prompt-actions { display: flex; gap: 14px; }
+.prompt-actions .link-btn { padding-left: 0; }
+
+.write-text {
+  display: block;
+  width: 100%;
+  min-height: 46vh;
+  margin-bottom: 18px;
+  padding: 6px 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 19px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.write-text:focus-visible { outline: none; border-bottom-color: var(--ink); }
+.write-text::placeholder { color: var(--muted); opacity: 0.85; }
+
+.field select[disabled] { opacity: 0.7; }
+
 @media (prefers-reduced-motion: reduce) {
   .flap .fold, .flap .unfold { animation: none; display: none; }
   .tray, .tray.leaving, .sheet, .toast, .row.just-flipped { animation: none; }
