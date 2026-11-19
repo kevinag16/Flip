@@ -1,7 +1,7 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
@@ -22,7 +22,9 @@ const ERA_COLORS = [
   { name: "Lilac",  c: "#A98BE8" }
 ];
 
-const TRIGGERS = ["Bored", "Stressed", "Late night", "Social"];
+const TRIGGERS = ["Bored", "Stressed", "Late night", "Social"]; // defaults for a new era
+const MAX_TRIGGERS = 12;
+const TRIGGER_MAX_LEN = 24;
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -108,7 +110,7 @@ function normalize(s) {
 }
 
 function normalizeEra(e) {
-  return Object.assign({
+  const out = Object.assign({
     id: uid(),
     name: "Untitled era",
     becoming: "",
@@ -122,6 +124,30 @@ function normalizeEra(e) {
     comebackPending: false,
     lastReply: -1
   }, e);
+  // Trigger tags this era offers after a flip. Older saves get the defaults.
+  out.triggers = Array.isArray(out.triggers)
+    ? out.triggers.filter(t => typeof t === "string" && t.trim())
+    : TRIGGERS.slice();
+  return out;
+}
+
+/** Adds a tag to the era. Returns the stored label (existing one if it's a duplicate) or null. */
+function addTrigger(era, raw) {
+  const label = String(raw || "").trim().replace(/\s+/g, " ").slice(0, TRIGGER_MAX_LEN);
+  if (!label) return null;
+  const existing = era.triggers.find(t => t.toLowerCase() === label.toLowerCase());
+  if (existing) return existing;
+  if (era.triggers.length >= MAX_TRIGGERS) {
+    toast(`You can have up to ${MAX_TRIGGERS} tags. Remove one first.`);
+    return null;
+  }
+  era.triggers.push(label);
+  return label;
+}
+
+/** Removes a tag from the list. Past flips keep their tag. */
+function removeTrigger(era, label) {
+  era.triggers = era.triggers.filter(t => t !== label);
 }
 
 let saveChain = Promise.resolve();
@@ -512,25 +538,99 @@ function showTray(era, ev, proof) {
   kicker.textContent = (proof && proof.kicker) || "";
   $("#proof-line").textContent = (proof && proof.line) || "";
 
-  const chips = $("#chips");
-  chips.innerHTML = "";
-  TRIGGERS.forEach(label => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "chip";
-    b.textContent = label;
-    b.setAttribute("aria-pressed", "false");
-    b.addEventListener("click", () => {
-      const on = ev.trigger !== label;
-      ev.trigger = on ? label : undefined;
-      chips.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === b && on)));
-      save();
-    });
-    chips.appendChild(b);
-  });
+  renderTrayChips(era, ev, false);
 
   $("#undo-btn").onclick = () => undoFlip(era, ev);
   document.body.classList.add("tray-open");
+}
+
+/** Trigger chips in the tray. editing = remove mode (tap a chip to remove it). */
+function renderTrayChips(era, ev, editing, { openAdd = false } = {}) {
+  const chips = $("#chips");
+  const editBtn = $("#tags-edit");
+  chips.innerHTML = "";
+  chips.classList.toggle("editing", editing);
+  editBtn.textContent = editing ? "Done editing" : "Edit tags";
+  editBtn.setAttribute("aria-pressed", String(editing));
+  editBtn.hidden = !editing && era.triggers.length === 0;
+  editBtn.onclick = () => renderTrayChips(era, ev, !editing);
+
+  era.triggers.forEach(label => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    const text = document.createElement("span");
+    text.textContent = label;
+    b.appendChild(text);
+    if (editing) {
+      b.classList.add("removable");
+      b.setAttribute("aria-label", `Remove ${label}`);
+      b.insertAdjacentHTML("beforeend", '<span class="x" aria-hidden="true">×</span>');
+      b.addEventListener("click", () => {
+        removeTrigger(era, label);
+        save();
+        renderTrayChips(era, ev, era.triggers.length > 0);
+        toast(`Removed ${label}. Past flips keep it.`);
+      });
+    } else {
+      b.setAttribute("aria-pressed", String(ev.trigger === label));
+      b.addEventListener("click", () => {
+        const on = ev.trigger !== label;
+        ev.trigger = on ? label : undefined;
+        chips.querySelectorAll(".chip[aria-pressed]").forEach(c => c.setAttribute("aria-pressed", String(c === b && on)));
+        save();
+      });
+    }
+    chips.appendChild(b);
+  });
+
+  if (era.triggers.length >= MAX_TRIGGERS) return;
+
+  if (!openAdd) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "chip chip-add";
+    add.textContent = "+ New tag";
+    add.addEventListener("click", () => renderTrayChips(era, ev, editing, { openAdd: true }));
+    chips.appendChild(add);
+    return;
+  }
+
+  const form = document.createElement("form");
+  form.className = "chip-form";
+  form.innerHTML = `
+    <input type="text" maxlength="${TRIGGER_MAX_LEN}" placeholder="New tag" aria-label="New tag"
+      enterkeyhint="done" autocomplete="off" autocapitalize="sentences">
+    <button type="submit" class="chip chip-save">Add</button>`;
+  const input = $("input", form);
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const label = addTrigger(era, input.value);
+    if (!label) { input.focus(); return; }
+    if (!editing) ev.trigger = label; // a tag made for this flip is the answer for this flip
+    save();
+    renderTrayChips(era, ev, editing);
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (!input.value.trim() && document.contains(form) && !form.contains(document.activeElement)) {
+        renderTrayChips(era, ev, editing);
+      }
+    }, 150);
+  });
+  chips.appendChild(form);
+  input.focus();
+}
+
+/* Keep the tray above the iPhone keyboard while typing a new tag. */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const placeTray = () => {
+    const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    $("#tray").style.setProperty("--kb", `${Math.round(covered)}px`);
+  };
+  vv.addEventListener("resize", placeTray);
+  vv.addEventListener("scroll", placeTray);
 }
 
 function hideTray() {
@@ -655,7 +755,7 @@ function patternsHTML(era) {
   if (trigRows.length) {
     html += `<ul class="stat-list">${trigRows.map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("")}</ul>`;
   } else {
-    html += `<p class="muted">Tap a reason after a flip (bored, stressed, late night, social) to see what pulls you most.</p>`;
+    html += `<p class="muted">Tap a tag after a flip to see what pulls you most.</p>`;
   }
   return html;
 }
@@ -1098,7 +1198,7 @@ function openReasonSheet(era, ev) {
     <h2>What was the pull?</h2>
     <p class="lead">Flip at ${esc(fmtTime.format(ev.t))}, ${esc(sameDay(ev.t, Date.now()) ? "today" : fmtDay.format(ev.t))}.</p>
     <div class="chips" id="reason-chips">
-      ${TRIGGERS.map(t => `<button type="button" class="chip" aria-pressed="${ev.trigger === t}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}
+      ${(ev.trigger && !era.triggers.includes(ev.trigger) ? [...era.triggers, ev.trigger] : era.triggers).map(t => `<button type="button" class="chip" aria-pressed="${ev.trigger === t}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}
     </div>
     <div class="actions" style="margin-top:20px">
       ${ev.trigger ? `<button class="btn" type="button" id="reason-clear">Remove reason</button>` : ""}

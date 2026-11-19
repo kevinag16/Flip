@@ -310,7 +310,7 @@ button { cursor: pointer; }
 .tray {
   position: fixed;
   left: 50%;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(16px + var(--kb, 0px) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   width: min(488px, calc(100% - 24px));
   background: var(--surface);
@@ -341,6 +341,31 @@ button { cursor: pointer; }
 
 .tray-row { display: grid; gap: 8px; }
 .tray-q { color: var(--muted); font-size: 14px; }
+
+.tray-q-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.tray-edit { padding: 6px 0 6px 8px; color: var(--muted); font-size: 14px; font-weight: 500; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; }
+
+.chip-add { border-style: dashed; color: var(--muted); }
+
+.chip.removable { border-style: dashed; }
+.chip.removable .x { font-size: 18px; line-height: 1; color: var(--danger); }
+
+.chip-form { display: flex; gap: 8px; }
+
+.chip-form input {
+  width: 9.5em;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 16px; /* 16px stops iPhone from zooming in */
+}
+
+.chip-save { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); font-weight: 600; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
