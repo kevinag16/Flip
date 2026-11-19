@@ -1,7 +1,7 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
@@ -603,20 +603,26 @@ function renderTrayChips(era, ev, editing, { openAdd = false } = {}) {
       enterkeyhint="done" autocomplete="off" autocapitalize="sentences">
     <button type="submit" class="chip chip-save">Add</button>`;
   const input = $("input", form);
-  form.addEventListener("submit", e => {
-    e.preventDefault();
-    const label = addTrigger(era, input.value);
-    if (!label) { input.focus(); return; }
-    if (!editing) ev.trigger = label; // a tag made for this flip is the answer for this flip
-    save();
+  let committed = false;
+  // Saves what's typed (if anything) and closes the field. Safe to call more than once.
+  const commit = () => {
+    if (committed) return;
+    if (input.value.trim()) {
+      const label = addTrigger(era, input.value);
+      if (!label) { input.focus(); return; } // tag limit reached; toast already shown
+      if (!editing) ev.trigger = label; // a tag made for this flip is the answer for this flip
+      save();
+    }
+    committed = true;
     renderTrayChips(era, ev, editing);
-  });
+  };
+  form.addEventListener("submit", e => { e.preventDefault(); commit(); });
+  // Keep focus in the field while Add is pressed, so the keyboard doesn't start closing
+  // (and move the tray) mid-tap. The tap itself then submits the form as normal.
+  $(".chip-save", form).addEventListener("mousedown", e => e.preventDefault());
+  // Keyboard "Done", tapping elsewhere, etc.: keep what was typed instead of throwing it away.
   input.addEventListener("blur", () => {
-    setTimeout(() => {
-      if (!input.value.trim() && document.contains(form) && !form.contains(document.activeElement)) {
-        renderTrayChips(era, ev, editing);
-      }
-    }, 150);
+    setTimeout(() => { if (document.contains(form)) commit(); }, 150);
   });
   chips.appendChild(form);
   input.focus();
