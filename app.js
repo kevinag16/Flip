@@ -1,7 +1,8 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.1.0";
+const STATE_VERSION = 2; // 2: Logbook, delay pulls, Lonely + Tired pulls
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
@@ -22,7 +23,8 @@ const ERA_COLORS = [
   { name: "Lilac",  c: "#A98BE8" }
 ];
 
-const TRIGGERS = ["Bored", "Stressed", "Late night", "Social"]; // defaults for a new era
+const TRIGGERS = ["Bored", "Stressed", "Lonely", "Tired", "Late night", "Social"]; // starting pulls for every era
+const MOODS = ["rough", "low", "okay", "good", "great"];
 const MAX_TRIGGERS = 12;
 const TRIGGER_MAX_LEN = 24;
 
@@ -98,7 +100,12 @@ function serialize(value, space) {
 }
 
 function freshState() {
-  return { version: 1, eras: [], settings: { sound: true, lastExport: null } };
+  return {
+    version: STATE_VERSION,
+    eras: [],
+    logbook: [],
+    settings: { sound: true, lastExport: null, showPreviews: false }
+  };
 }
 
 function normalize(s) {
@@ -106,6 +113,28 @@ function normalize(s) {
   const out = Object.assign(base, s || {});
   out.settings = Object.assign(freshState().settings, (s && s.settings) || {});
   out.eras = Array.isArray(out.eras) ? out.eras.map(normalizeEra) : [];
+  out.logbook = Array.isArray(out.logbook)
+    ? out.logbook.filter(x => x && typeof x === "object").map(normalizeEntry)
+    : [];
+  const from = Number(out.version) || 1;
+  if (from < 2) out.eras.forEach(addNewDefaultPulls);
+  out.version = Math.max(from, STATE_VERSION);
+  return out;
+}
+
+/** v1 -> v2: give existing eras the new Lonely and Tired pulls (once), keeping custom tags. */
+function addNewDefaultPulls(era) {
+  const have = era.triggers.map(t => t.toLowerCase());
+  const add = ["Lonely", "Tired"].filter(t => !have.includes(t.toLowerCase()));
+  const room = Math.max(0, MAX_TRIGGERS - era.triggers.length);
+  if (!add.length || !room) return;
+  const s = have.indexOf("stressed");
+  era.triggers.splice(s >= 0 ? s + 1 : era.triggers.length, 0, ...add.slice(0, room));
+}
+
+function normalizeEntry(x) {
+  const out = Object.assign({ id: uid(), t: Date.now(), text: "" }, x);
+  out.text = String(out.text ?? "");
   return out;
 }
 
@@ -212,6 +241,15 @@ function plural(n, one, many) {
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Random pick that never repeats the previous pick for the same key. */
+const lastPick = {};
+function rotate(key, arr) {
+  let i = Math.floor(Math.random() * arr.length);
+  if (arr.length > 1 && i === lastPick[key]) i = (i + 1) % arr.length;
+  lastPick[key] = i;
+  return arr[i];
 }
 
 function fill(text, era) {
@@ -655,8 +693,13 @@ $("#tray-done").addEventListener("click", hideTray);
 let currentView = "home";
 
 function showView(name) {
+  // Leaving the writing screen any way at all (Back, a quick-flip link...) keeps what was written.
+  if (currentView === "write" && name !== "write" && writeCtx) {
+    currentView = name;
+    closeWrite();
+  }
   currentView = name;
-  ["home", "era", "hall"].forEach(v => { $(`#view-${v}`).hidden = v !== name; });
+  ["home", "era", "hall", "logbook", "write"].forEach(v => { $(`#view-${v}`).hidden = v !== name; });
   if (name !== "era") detailRefs = null;
   window.scrollTo(0, 0);
 }
@@ -744,26 +787,44 @@ function timeBucket(t) {
   return "Late night";
 }
 
+function countBy(list, key) {
+  const m = {};
+  list.forEach(x => { if (x[key]) m[x[key]] = (m[x[key]] || 0) + 1; });
+  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+}
+
+function statListHTML(rows) {
+  return `<ul class="stat-list">${rows.map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("")}</ul>`;
+}
+
 function patternsHTML(era) {
   const flips = era.events.filter(e => e.type === "flip");
-  if (flips.length < 5) {
-    return `<p class="muted">Patterns show up after 5 flips. Tag what pulled you after a flip to see them here.</p>`;
-  }
-  const buckets = {};
-  flips.forEach(f => { const b = timeBucket(f.t); buckets[b] = (buckets[b] || 0) + 1; });
-  const topTime = Object.entries(buckets).sort((a, b) => b[1] - a[1])[0];
+  const delays = era.events.filter(e => e.type === "delay");
+  const resist = countBy(flips, "trigger");
+  const getsYou = countBy(delays, "pull");
+  const delaysWithPull = delays.filter(d => d.pull).length;
+  let html = "";
 
-  const trig = {};
-  flips.forEach(f => { if (f.trigger) trig[f.trigger] = (trig[f.trigger] || 0) + 1; });
-  const trigRows = Object.entries(trig).sort((a, b) => b[1] - a[1]);
-
-  let html = `<p>Most of your flips happen in the <strong>${topTime[0].toLowerCase()}</strong> (${topTime[1]} of ${flips.length}).</p>`;
-  if (trigRows.length) {
-    html += `<ul class="stat-list">${trigRows.map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("")}</ul>`;
-  } else {
-    html += `<p class="muted">Tap a tag after a flip to see what pulls you most.</p>`;
+  if (flips.length >= 5) {
+    const buckets = {};
+    flips.forEach(f => { const b = timeBucket(f.t); buckets[b] = (buckets[b] || 0) + 1; });
+    const topTime = Object.entries(buckets).sort((a, b) => b[1] - a[1])[0];
+    html += `<p>Most of your flips happen in the <strong>${topTime[0].toLowerCase()}</strong> (${topTime[1]} of ${flips.length}).</p>`;
   }
-  return html;
+
+  if (delaysWithPull >= 3) {
+    // Side by side only once there's enough to compare.
+    html += `<div class="compare">
+      <div><h4>What you resist</h4>${resist.length ? statListHTML(resist) : `<p class="muted">Tag a pull after a flip to see this.</p>`}</div>
+      <div><h4>What gets you</h4>${statListHTML(getsYou)}</div>
+    </div>`;
+  } else if (flips.length >= 5) {
+    html += resist.length
+      ? `<h4 class="sub">What you resist</h4>${statListHTML(resist)}`
+      : `<p class="muted">Tap a tag after a flip to see what pulls you most.</p>`;
+  }
+
+  return html || `<p class="muted">Patterns show up after 5 flips. Tag what pulled you after a flip to see them here.</p>`;
 }
 
 function levelsHTML(era) {
@@ -796,9 +857,11 @@ function historyHTML(era) {
       html += `<li class="ev"><time>${esc(fmtTime.format(ev.t))}</time><span class="ev-main"><span class="kind">Flip</span>${reason}</span></li>`;
     } else {
       const bits = [];
+      if (ev.pull) bits.push(`Pull: ${esc(ev.pull)}`);
       if (ev.note) bits.push(esc(ev.note));
       if (ev.before) bits.push(`Right before: ${esc(ev.before)}`);
       if (ev.plan) bits.push(`Next time, I'll ${esc(ev.plan)}`);
+      if (findEntry(ev.logbookId)) bits.push("Wrote about it in the Logbook");
       const inner = `<span class="kind">Delay</span>${bits.length ? bits.map(b => `<span class="note">${b}</span>`).join("") : `<span class="note">No notes yet</span>`}`;
       html += graduated
         ? `<li class="ev delay"><time>${esc(fmtTime.format(ev.t))}</time><span>${inner}</span></li>`
@@ -1007,7 +1070,7 @@ $("#scrim").addEventListener("click", closeSheet);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
 const SUPPORT_HTML = `
-  <p class="support">Need support? SAMHSA's National Helpline is free and open 24/7: <a href="tel:18006624357">1-800-662-4357</a>.</p>`;
+  <p class="support">Need support? Call or text <a href="tel:988">988</a>, or call SAMHSA's free helpline at <a href="tel:18006624357">1-800-662-4357</a>.</p>`;
 
 function openEraSheet(era = null) {
   if (!era && activeEras().length >= MAX_ACTIVE) {
@@ -1073,37 +1136,122 @@ function openEraSheet(era = null) {
   });
 }
 
+/* ---------- Shared form pieces (pull chips, plan, "Write it out") ---------- */
+
+function pullChipsHTML(era, selected, id) {
+  const list = selected && !era.triggers.includes(selected) ? [...era.triggers, selected] : era.triggers;
+  return `<div class="chips" id="${id}" role="group" aria-labelledby="${id}-label">
+    ${list.map(t => `<button type="button" class="chip" aria-pressed="${t === selected}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}
+  </div>`;
+}
+
+/** One-of chips (tap again to clear). Returns a getter for the current value. */
+function singleChoice(container) {
+  const pressed = container.querySelector('.chip[aria-pressed="true"]');
+  let value = pressed ? pressed.dataset.t : undefined;
+  container.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    value = value === c.dataset.t ? undefined : c.dataset.t;
+    container.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.t === value)));
+  }));
+  return () => value;
+}
+
+function cleanPlan(v) {
+  return String(v || "").trim().replace(/^i'?ll\s+/i, "").replace(/[.!]+$/, "");
+}
+
+function planFieldHTML(p, value) {
+  return `
+    <div class="field">
+      <label for="${p}-plan">Next time that happens, I'll… <span class="muted">(optional)</span></label>
+      <input type="text" id="${p}-plan" maxlength="120" enterkeyhint="done" value="${esc(value || "")}">
+      <div class="chips suggest" aria-label="Suggestions">
+        ${PLAN_SUGGESTIONS.map(s => `<button type="button" class="chip small" data-s="${esc(s)}">${esc(s)}</button>`).join("")}
+      </div>
+    </div>`;
+}
+
+function wirePlan(p) {
+  const input = $(`#${p}-plan`);
+  input.closest(".field").querySelectorAll("[data-s]").forEach(b => b.addEventListener("click", () => {
+    input.value = b.dataset.s;
+  }));
+}
+
+function writeItHTML(p, text, open) {
+  return `
+    <div class="field">
+      <button type="button" class="disclose" id="${p}-write-toggle" aria-expanded="${open}" aria-controls="${p}-write-wrap">
+        Write it out <span class="muted">(optional)</span>
+      </button>
+      <div id="${p}-write-wrap" class="write-wrap"${open ? "" : " hidden"}>
+        <textarea id="${p}-write" aria-label="Write it out" placeholder="Write anything. Only you can see this.">${esc(text || "")}</textarea>
+        <p class="hint">Saved to your Logbook.</p>
+      </div>
+    </div>`;
+}
+
+function wireWriteIt(p) {
+  const toggle = $(`#${p}-write-toggle`);
+  const wrap = $(`#${p}-write-wrap`);
+  toggle.addEventListener("click", () => {
+    const open = wrap.hidden;
+    wrap.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) $(`#${p}-write`).focus();
+  });
+}
+
+function findEntry(id) {
+  return id ? state.logbook.find(e => e.id === id) : null;
+}
+
+/** The delay a Logbook entry was written with, if it still exists. */
+function linkedDelay(entry) {
+  if (!entry || entry.delayRef == null) return null;
+  const era = findEra(entry.eraId);
+  const ev = era && era.events.find(e => e.type === "delay" && e.t === entry.delayRef);
+  return ev ? { era, ev } : null;
+}
+
+/** Re-render whatever screen is showing after an edit made in a sheet. */
+function refreshAfterEdit(era) {
+  if (currentView === "era" && era) renderEra(era);
+  else if (currentView === "logbook") renderLogbook();
+}
+
 function openDelaySheet(era) {
   openSheet(`
     <h2>Log a delay</h2>
     <p class="lead">Your count stays at ${era.count}. Nothing resets.</p>
     <div class="field">
-      <label for="d-note">What happened?</label>
-      <textarea id="d-note" placeholder="Write anything. Only you can see this."></textarea>
+      <span class="label" id="d-pull-label">What was the pull? <span class="muted">(optional)</span></span>
+      ${pullChipsHTML(era, undefined, "d-pull")}
     </div>
-    <div class="field">
-      <label for="d-before">What was happening right before? <span class="muted">(optional)</span></label>
-      <input type="text" id="d-before" maxlength="120">
-    </div>
-    <div class="field">
-      <label for="d-plan">Next time that happens, I'll… <span class="muted">(optional)</span></label>
-      <input type="text" id="d-plan" maxlength="120" placeholder="take a walk around the block">
-    </div>
+    ${planFieldHTML("d", "")}
+    ${writeItHTML("d", "", false)}
     <div class="actions">
       <button class="btn primary" type="button" id="d-save">Log delay</button>
       <button class="btn" type="button" id="d-cancel">Cancel</button>
     </div>
     ${SUPPORT_HTML}`, () => {
+    const getPull = singleChoice($("#d-pull"));
+    wirePlan("d");
+    wireWriteIt("d");
     $("#d-cancel").addEventListener("click", closeSheet);
     $("#d-save").addEventListener("click", () => {
-      const plan = $("#d-plan").value.trim().replace(/^i'?ll\s+/i, "").replace(/[.!]+$/, "");
-      const ev = {
-        t: Date.now(),
-        type: "delay",
-        note: $("#d-note").value.trim() || undefined,
-        before: $("#d-before").value.trim() || undefined,
-        plan: plan || undefined
-      };
+      const t = Date.now();
+      const ev = { t, type: "delay" };
+      const pull = getPull();
+      const plan = cleanPlan($("#d-plan").value);
+      const text = $("#d-write").value.trim();
+      if (pull) ev.pull = pull;
+      if (plan) ev.plan = plan;
+      if (text) {
+        const entry = normalizeEntry({ id: uid(), t, text, eraId: era.id, delayRef: t });
+        state.logbook.push(entry);
+        ev.logbookId = entry.id;
+      }
       era.events.push(ev);
       era.comebackPending = true;
       const pool = era.count > 0 ? DELAY_REPLIES : DELAY_REPLIES_ZERO;
@@ -1137,61 +1285,85 @@ function showDelayReply(era, reply, plan) {
     setTimeout(() => renderFlaps(b, "NOT CANCELLED", 13), 600);
     $("#d-done").addEventListener("click", () => {
       closeSheet();
-      if (currentView === "era") renderEra(era);
+      refreshAfterEdit(era);
     });
     announce(`Delayed, not cancelled. ${reply}`);
   });
 }
 
 function openDelayEditSheet(era, ev) {
+  const entry = findEntry(ev.logbookId);
+  const hasNote = "note" in ev;
+  const hasBefore = "before" in ev;
   openSheet(`
     <h2>Delay</h2>
-    <p class="lead">Logged ${esc(fmtTime.format(ev.t))}, ${esc(sameDay(ev.t, Date.now()) ? "today" : fmtDay.format(ev.t))}. Your count isn't affected.</p>
+    <p class="lead">${esc(era.name)}. Logged ${esc(fmtTime.format(ev.t))}, ${esc(sameDay(ev.t, Date.now()) ? "today" : fmtDay.format(ev.t))}. Your count isn't affected.</p>
+    <div class="field">
+      <span class="label" id="de-pull-label">What was the pull? <span class="muted">(optional)</span></span>
+      ${pullChipsHTML(era, ev.pull, "de-pull")}
+    </div>
+    ${planFieldHTML("de", ev.plan)}
+    ${hasNote ? `
     <div class="field">
       <label for="de-note">What happened?</label>
-      <textarea id="de-note" placeholder="Write anything. Only you can see this.">${esc(ev.note || "")}</textarea>
-    </div>
+      <textarea id="de-note">${esc(ev.note || "")}</textarea>
+    </div>` : ""}
+    ${hasBefore ? `
     <div class="field">
       <label for="de-before">What was happening right before?</label>
       <input type="text" id="de-before" maxlength="120" value="${esc(ev.before || "")}">
-    </div>
-    <div class="field">
-      <label for="de-plan">Next time that happens, I'll…</label>
-      <input type="text" id="de-plan" maxlength="120" placeholder="take a walk around the block" value="${esc(ev.plan || "")}">
-    </div>
+    </div>` : ""}
+    ${writeItHTML("de", entry ? entry.text : "", Boolean(entry))}
     <div class="actions">
       <button class="btn primary" type="button" id="de-save">Save changes</button>
       <button class="btn" type="button" id="de-cancel">Cancel</button>
       <button class="btn danger" type="button" id="de-delete">Delete this delay</button>
     </div>
     ${SUPPORT_HTML}`, () => {
+    const getPull = singleChoice($("#de-pull"));
+    wirePlan("de");
+    wireWriteIt("de");
     $("#de-cancel").addEventListener("click", closeSheet);
     $("#de-save").addEventListener("click", () => {
-      const note = $("#de-note").value.trim();
-      const before = $("#de-before").value.trim();
-      const plan = $("#de-plan").value.trim().replace(/^i'?ll\s+/i, "").replace(/[.!]+$/, "");
-      if (note) ev.note = note; else delete ev.note;
-      if (before) ev.before = before; else delete ev.before;
+      const pull = getPull();
+      const plan = cleanPlan($("#de-plan").value);
+      if (pull) ev.pull = pull; else delete ev.pull;
       if (plan) ev.plan = plan; else delete ev.plan;
+      // Old-style fields: keep them editable; an emptied field is removed.
+      if (hasNote) { const v = $("#de-note").value.trim(); if (v) ev.note = v; else delete ev.note; }
+      if (hasBefore) { const v = $("#de-before").value.trim(); if (v) ev.before = v; else delete ev.before; }
+
+      const text = $("#de-write").value.trim();
+      if (entry) {
+        if (text || entry.mood) entry.text = text;
+        else { state.logbook = state.logbook.filter(e => e !== entry); delete ev.logbookId; }
+      } else if (text) {
+        const fresh = normalizeEntry({ id: uid(), t: ev.t, text, eraId: era.id, delayRef: ev.t });
+        state.logbook.push(fresh);
+        ev.logbookId = fresh.id;
+      }
       save();
       closeSheet();
-      renderEra(era);
+      refreshAfterEdit(era);
       toast("Delay updated");
     });
     $("#de-delete").addEventListener("click", () => {
       confirmSheet({
         title: "Delete this delay?",
-        body: "It's removed from your history. Your count stays the same.",
+        body: entry
+          ? "It's removed from your history. Your count stays the same. What you wrote stays in your Logbook."
+          : "It's removed from your history. Your count stays the same.",
         confirm: "Delete delay",
         danger: true,
         onConfirm: () => {
           const i = era.events.indexOf(ev);
           if (i >= 0) era.events.splice(i, 1);
+          if (entry) delete entry.delayRef; // the writing stays, now as a plain entry
           const lastDelay = [...era.events].reverse().find(e => e.type === "delay");
           const lastFlip = [...era.events].reverse().find(e => e.type === "flip");
           if (!lastDelay || (lastFlip && lastFlip.t > lastDelay.t)) era.comebackPending = false;
           save();
-          renderEra(era);
+          refreshAfterEdit(era);
           toast("Delay deleted");
         }
       });
@@ -1260,11 +1432,12 @@ function confirmGraduate(era) {
 function confirmDelete(era) {
   confirmSheet({
     title: `Delete ${era.name}?`,
-    body: `This erases its ${plural(era.count, "flip", "flips")} and all of its history. It can't be undone.`,
+    body: `This erases its ${plural(era.count, "flip", "flips")} and all of its history. It can't be undone. Your Logbook entries stay.`,
     confirm: "Delete era",
     danger: true,
     onConfirm: () => {
       state.eras = state.eras.filter(e => e.id !== era.id);
+      state.logbook.forEach(e => { if (e.eraId === era.id) { delete e.eraId; delete e.delayRef; } });
       save();
       showView("home");
       renderHome();
@@ -1272,6 +1445,238 @@ function confirmDelete(era) {
     }
   });
 }
+
+/* ---------------- Logbook ---------------- */
+
+function moodLabel(m) {
+  return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
+}
+
+function eraTagHTML(eraId) {
+  const era = eraId && findEra(eraId);
+  return era ? `<span class="era-tag" style="--era:${esc(era.color)}">${esc(era.name)}</span>` : "";
+}
+
+function dayLabel(t) {
+  const now = Date.now();
+  if (sameDay(t, now)) return "Today";
+  if (sameDay(t, now - 86400000)) return "Yesterday";
+  return fmtDay.format(t);
+}
+
+/** Logbook entries plus delays from every era that have no writing of their own, newest first. */
+function logbookItems() {
+  const items = state.logbook.map(entry => ({ t: entry.t, entry }));
+  const linked = new Set(state.logbook.filter(e => e.delayRef != null).map(e => `${e.eraId}|${e.delayRef}`));
+  state.eras.forEach(era => era.events.forEach(ev => {
+    if (ev.type === "delay" && !linked.has(`${era.id}|${ev.t}`)) items.push({ t: ev.t, era, ev });
+  }));
+  return items.sort((a, b) => b.t - a.t);
+}
+
+function openLogbook() {
+  hideTray();
+  showView("logbook");
+  $("#logbook-line").textContent = rotate("header", LOGBOOK.headers);
+  const paths = $("#lb-paths");
+  paths.hidden = true;
+  $("#lb-prompts").setAttribute("aria-expanded", "false");
+  paths.innerHTML = LOGBOOK.paths.map(p => `
+    <button type="button" class="path-btn" data-path="${esc(p.key)}">
+      <strong>${esc(p.title)}</strong>
+      <span class="muted">${esc(p.prompts[0])}</span>
+    </button>`).join("");
+  paths.querySelectorAll(".path-btn").forEach(b => b.addEventListener("click", () => openWrite({ path: b.dataset.path })));
+  renderLogbook();
+}
+
+function renderLogbook() {
+  const list = $("#logbook-list");
+  const items = logbookItems();
+  if (!items.length) {
+    list.innerHTML = `<p class="muted lb-empty">Nothing here yet. Whenever you feel like it, one line is plenty.</p>`;
+    return;
+  }
+  const previews = state.settings.showPreviews;
+  let html = "";
+  let lastDay = null;
+  items.forEach((it, i) => {
+    const day = dayLabel(it.t);
+    if (day !== lastDay) {
+      html += `${lastDay === null ? "" : "</ul>"}<h3 class="lb-day">${esc(day)}</h3><ul class="lb-list">`;
+      lastDay = day;
+    }
+    let kind, meta = "", preview = "";
+    if (it.entry) {
+      const e = it.entry;
+      const path = e.path && LOGBOOK.paths.find(p => p.key === e.path);
+      kind = linkedDelay(e) ? "Delay" : path ? path.title : "Entry";
+      if (e.mood) meta += `<span class="lb-mood">${esc(moodLabel(e.mood))}</span>`;
+      meta += eraTagHTML(e.eraId);
+      preview = e.text;
+    } else {
+      kind = "Delay";
+      meta += eraTagHTML(it.era.id);
+      preview = it.ev.note || (it.ev.plan ? `Next time, I'll ${it.ev.plan}` : "");
+    }
+    html += `<li><button type="button" class="lb-row" data-i="${i}">
+      <time>${esc(fmtTime.format(it.t))}</time>
+      <span class="lb-main">
+        <span class="lb-meta"><span class="lb-kind">${esc(kind)}</span>${meta}</span>
+        ${previews && preview ? `<span class="lb-preview">${esc(preview)}</span>` : ""}
+      </span>
+    </button></li>`;
+  });
+  list.innerHTML = html + "</ul>";
+  list.querySelectorAll(".lb-row").forEach(b => b.addEventListener("click", () => {
+    const it = items[Number(b.dataset.i)];
+    if (it.entry) openWrite({ entry: it.entry });
+    else openDelayEditSheet(it.era, it.ev);
+  }));
+}
+
+/* ---------- Writing screen ---------- */
+
+let writeCtx = null; // { entry, t, path, step, answers, before }
+
+function openWrite({ entry = null, path = null } = {}) {
+  closeSheet();
+  hideTray();
+  const p = path ? LOGBOOK.paths.find(x => x.key === path) : null;
+  writeCtx = {
+    entry,
+    t: entry ? entry.t : Date.now(),
+    path: p,
+    step: 0,
+    answers: p ? p.prompts.map(() => "") : null,
+    before: entry ? entrySignature(entry) : null
+  };
+  showView("write");
+  renderWrite();
+}
+
+function entrySignature(e) {
+  return JSON.stringify([e.text, e.mood || "", e.eraId || ""]);
+}
+
+function renderWrite() {
+  const c = writeCtx;
+  const e = c.entry;
+  const link = linkedDelay(e);
+  const eras = [...activeEras(), ...state.eras.filter(x => x.graduatedAt)];
+  const eraId = e ? e.eraId : undefined;
+  const when = `${dayLabel(c.t)}, ${fmtTime.format(c.t)}`;
+  $("#write-body").innerHTML = `
+    <p class="write-when">${esc(when)}${link ? ` · Written with a delay in ${esc(link.era.name)}` : ""}</p>
+    ${c.path ? `
+    <div class="prompt-card">
+      <p class="prompt-step" id="prompt-step"></p>
+      <p class="prompt-text" id="prompt-text"></p>
+      <div class="prompt-actions">
+        ${c.path.prompts.length > 1 ? `<button class="link-btn" type="button" id="prompt-next">Next prompt</button>` : ""}
+        <button class="link-btn" type="button" id="prompt-done">Done</button>
+      </div>
+    </div>` : ""}
+    <textarea id="write-text" class="write-text" aria-label="${c.path ? "Your answer" : "Your entry"}"
+      placeholder="${esc(c.path ? "Write as much or as little as you like." : rotate("placeholder", LOGBOOK.placeholders))}">${esc(e ? e.text : "")}</textarea>
+    <div class="field">
+      <span class="label" id="w-mood-label">Mood <span class="muted">(optional)</span></span>
+      <div class="chips" id="w-mood" role="group" aria-labelledby="w-mood-label">
+        ${MOODS.map(m => `<button type="button" class="chip" aria-pressed="${Boolean(e && e.mood === m)}" data-t="${m}">${moodLabel(m)}</button>`).join("")}
+      </div>
+    </div>
+    <div class="field">
+      <label for="w-era">Era <span class="muted">(optional)</span></label>
+      <select id="w-era"${link ? " disabled" : ""}>
+        <option value="">None</option>
+        ${eras.map(x => `<option value="${esc(x.id)}"${x.id === eraId ? " selected" : ""}>${esc(x.name)}${x.graduatedAt ? " (Hall of Fame)" : ""}</option>`).join("")}
+      </select>
+    </div>
+    ${e ? `<div class="actions"><button class="btn danger" type="button" id="w-delete">Delete entry</button></div>` : ""}`;
+
+  c.getMood = singleChoice($("#w-mood"));
+  if (c.path) {
+    showPrompt();
+    const next = $("#prompt-next");
+    if (next) next.addEventListener("click", () => {
+      c.answers[c.step] = $("#write-text").value;
+      c.step = (c.step + 1) % c.path.prompts.length;
+      showPrompt();
+      $("#write-text").focus();
+    });
+    $("#prompt-done").addEventListener("click", closeWrite);
+  }
+  const del = $("#w-delete");
+  if (del) del.addEventListener("click", () => confirmSheet({
+    title: "Delete this entry?",
+    body: link ? "It can't be undone. The delay stays in your history." : "It can't be undone.",
+    confirm: "Delete entry",
+    danger: true,
+    onConfirm: () => {
+      state.logbook = state.logbook.filter(x => x !== e);
+      if (link) delete link.ev.logbookId;
+      save();
+      writeCtx = null;
+      showView("logbook");
+      renderLogbook();
+      toast("Entry deleted");
+    }
+  }));
+}
+
+function showPrompt() {
+  const c = writeCtx;
+  $("#prompt-step").textContent = `${c.path.title} · ${c.step + 1} of ${c.path.prompts.length}`;
+  $("#prompt-text").textContent = c.path.prompts[c.step];
+  $("#write-text").value = c.answers[c.step];
+}
+
+/** Saves what's on the writing screen. Creates the entry the first time there's something to keep. */
+function saveWrite() {
+  const c = writeCtx;
+  if (!c || !$("#write-text")) return false;
+  let text;
+  if (c.path) {
+    c.answers[c.step] = $("#write-text").value;
+    text = c.path.prompts
+      .map((q, i) => (c.answers[i].trim() ? `${q}\n${c.answers[i].trim()}` : null))
+      .filter(Boolean).join("\n\n");
+  } else {
+    text = $("#write-text").value.trim();
+  }
+  const mood = c.getMood();
+  const eraSel = $("#w-era");
+  if (!c.entry) {
+    if (!text && !mood) return false; // nothing to keep
+    c.entry = normalizeEntry({ id: uid(), t: c.t, text });
+    if (c.path) c.entry.path = c.path.key;
+    state.logbook.push(c.entry);
+  }
+  const e = c.entry;
+  e.text = text;
+  if (mood) e.mood = mood; else delete e.mood;
+  if (!eraSel.disabled) { if (eraSel.value) e.eraId = eraSel.value; else delete e.eraId; }
+  save();
+  return true;
+}
+
+/** Leave the writing screen, keeping whatever was written. */
+function closeWrite() {
+  const c = writeCtx;
+  if (!c) return;
+  const saved = saveWrite();
+  const changed = saved && (c.before === null || entrySignature(c.entry) !== c.before);
+  writeCtx = null;
+  if (changed) toast(rotate("saved", LOGBOOK.saved));
+  if (currentView === "write") { showView("logbook"); renderLogbook(); }
+}
+
+// If Flip is closed or sent to the background mid-entry, keep what's written so far.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && writeCtx && saveWrite()) {
+    writeCtx.before = writeCtx.before ?? "new"; // an entry now exists; Done should still thank them
+  }
+});
 
 /* ---------------- Settings & backup ---------------- */
 
@@ -1309,6 +1714,12 @@ function openSettings() {
     </div>
 
     <div class="section">
+      <h3>Logbook</h3>
+      <button class="btn" type="button" id="s-previews" aria-pressed="${state.settings.showPreviews}">Show previews in Logbook: ${state.settings.showPreviews ? "On" : "Off"}</button>
+      <p class="muted" style="margin-top:8px">When it's on, the Logbook list shows the start of each entry. Off keeps it private if someone glances at your screen.</p>
+    </div>
+
+    <div class="section">
       <h3>Where Flip is running</h3>
       <p>${standalone ? "You're using the Home Screen app." : "You're using Flip in a browser tab."}</p>
       <p class="muted">The Home Screen app and Safari keep separate counts. ${standalone ? "Keep using Flip from your Home Screen so everything stays in one place." : "To install Flip, tap Share, then Add to Home Screen, and use it from there."}</p>
@@ -1321,6 +1732,13 @@ function openSettings() {
     $("#s-export").addEventListener("click", exportBackup);
     $("#s-import").addEventListener("click", () => $("#s-file").click());
     $("#s-file").addEventListener("change", e => importBackup(e.target.files[0]));
+    $("#s-previews").addEventListener("click", e => {
+      state.settings.showPreviews = !state.settings.showPreviews;
+      save();
+      e.currentTarget.textContent = `Show previews in Logbook: ${state.settings.showPreviews ? "On" : "Off"}`;
+      e.currentTarget.setAttribute("aria-pressed", String(state.settings.showPreviews));
+      if (currentView === "logbook") renderLogbook();
+    });
     $("#s-sound").addEventListener("click", e => {
       state.settings.sound = !state.settings.sound;
       save();
@@ -1374,9 +1792,10 @@ async function importBackup(file) {
     return;
   }
   const flips = incoming.eras.reduce((sum, e) => sum + (Number(e.count) || 0), 0);
+  const entries = Array.isArray(incoming.logbook) ? incoming.logbook.length : 0;
   confirmSheet({
     title: "Replace everything with this backup?",
-    body: `It has ${plural(incoming.eras.length, "era", "eras")} and ${plural(flips, "flip", "flips")}. What's on this phone now will be replaced.`,
+    body: `It has ${plural(incoming.eras.length, "era", "eras")}, ${plural(flips, "flip", "flips")} and ${plural(entries, "Logbook entry", "Logbook entries")}. What's on this phone now will be replaced.`,
     confirm: "Restore backup",
     danger: true,
     onConfirm: () => {
@@ -1421,6 +1840,16 @@ $("#open-settings").addEventListener("click", openSettings);
 $("#open-hall").addEventListener("click", () => { hideTray(); showView("hall"); renderHall(); });
 $("#era-back").addEventListener("click", () => { showView("home"); renderHome(); });
 $("#hall-back").addEventListener("click", () => { showView("home"); renderHome(); });
+$("#open-logbook").addEventListener("click", openLogbook);
+$("#logbook-back").addEventListener("click", () => { showView("home"); renderHome(); });
+$("#lb-new").addEventListener("click", () => openWrite());
+$("#lb-prompts").addEventListener("click", e => {
+  const paths = $("#lb-paths");
+  paths.hidden = !paths.hidden;
+  e.currentTarget.setAttribute("aria-expanded", String(!paths.hidden));
+});
+$("#write-back").addEventListener("click", closeWrite);
+$("#write-done").addEventListener("click", closeWrite);
 window.addEventListener("hashchange", handleHash);
 
 (async function boot() {

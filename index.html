@@ -27,6 +27,7 @@
       <header class="topbar">
         <h1 class="wordmark">Flip</h1>
         <nav class="topbar-actions">
+          <button class="link-btn" id="open-logbook" type="button">Logbook</button>
           <button class="link-btn" id="open-hall" type="button">Hall of Fame</button>
           <button class="icon-btn" id="open-settings" type="button" aria-label="Settings and backup">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
@@ -55,6 +56,31 @@
       </header>
       <h2 class="page-title">Hall of Fame</h2>
       <div id="hall-list"></div>
+    </section>
+
+    <!-- Logbook -->
+    <section id="view-logbook" class="view" hidden aria-label="Logbook">
+      <header class="topbar">
+        <button class="link-btn back" id="logbook-back" type="button">Back</button>
+      </header>
+      <h2 class="page-title">Logbook</h2>
+      <p class="logbook-line" id="logbook-line"></p>
+      <button class="btn primary block" id="lb-new" type="button">New entry</button>
+      <div class="prompt-row">
+        <button class="disclose" id="lb-prompts" type="button" aria-expanded="false" aria-controls="lb-paths">Try a prompt</button>
+        <div class="paths" id="lb-paths" hidden></div>
+      </div>
+      <div id="logbook-list"></div>
+      <p class="support">Need support? Call or text <a href="tel:988">988</a>, or call SAMHSA's free helpline at <a href="tel:18006624357">1-800-662-4357</a>.</p>
+    </section>
+
+    <!-- Writing screen -->
+    <section id="view-write" class="view write-view" hidden aria-label="Write">
+      <header class="topbar">
+        <button class="link-btn back" id="write-back" type="button">Logbook</button>
+        <button class="btn primary small" id="write-done" type="button">Done</button>
+      </header>
+      <div id="write-body"></div>
     </section>
   </div>
 

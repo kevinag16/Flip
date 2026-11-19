@@ -121,3 +121,73 @@ const DELAY_REPLIES_ZERO = [
   "A slip is information, not a verdict. Your first flip is still ahead.",
   "Be as kind to yourself as you'd be to a friend."
 ];
+
+/*
+  Logbook lines
+  -------------
+  Everything here is optional for the person. Nothing is required, tracked or scored.
+*/
+const LOGBOOK = {
+  // Rotating line at the top of the Logbook page
+  headers: [
+    "Write it down. It doesn't have to make sense.",
+    "No rules here. Just you.",
+    "Messy is fine. Honest is better.",
+    "One line counts."
+  ],
+
+  // Rotating placeholder in the writing screen
+  placeholders: [
+    "What's on your mind right now?",
+    "What pulled at you today?",
+    "What went better than you expected?",
+    "What do you need right now?"
+  ],
+
+  // Toast after an entry is saved
+  saved: [
+    "Thanks for checking in with yourself.",
+    "That's off your chest now.",
+    "Noticing is part of changing.",
+    "You showed up for yourself."
+  ],
+
+  // Guided paths: one prompt at a time, every prompt skippable
+  paths: [
+    {
+      key: "pattern",
+      title: "Understand my pattern",
+      prompts: [
+        "When does the urge show up most?",
+        "What does the habit give me (relief, escape, reward)?",
+        "What else could give me that?"
+      ]
+    },
+    {
+      key: "becoming",
+      title: "Who I'm becoming",
+      prompts: [
+        "What matters more to me than the urge?",
+        "What would that person do today?"
+      ]
+    },
+    {
+      key: "hard",
+      title: "Hard day",
+      prompts: [
+        "What happened?",
+        "What would I say to a friend going through this?"
+      ]
+    },
+    {
+      key: "wins",
+      title: "Wins",
+      prompts: [
+        "What went right today, even something small?"
+      ]
+    }
+  ]
+};
+
+// Tap suggestions that fill "Next time that happens, I'll…" on the Delay screen
+const PLAN_SUGGESTIONS = ["take a walk", "text someone", "put my phone away"];
