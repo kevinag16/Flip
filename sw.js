@@ -1,5 +1,5 @@
 /* Flip service worker: works offline, picks up updates when online. */
-const VERSION = "flip-1.0.5";
+const VERSION = "flip-1.0.6";
 const SHELL = [
   "./",
   "./index.html",
