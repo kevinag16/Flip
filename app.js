@@ -1,7 +1,7 @@
 /* Flip v1 — plain JavaScript, no build step. */
 "use strict";
 
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 const MAX_ACTIVE = 5;
 
 const LEVELS = [
